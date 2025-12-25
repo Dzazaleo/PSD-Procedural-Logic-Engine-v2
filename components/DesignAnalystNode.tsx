@@ -392,7 +392,7 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
   const { setNodes } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   
-  const { resolvedRegistry, templateRegistry, registerResolved, registerTemplate, unregisterNode } = useProceduralStore();
+  const { resolvedRegistry, templateRegistry, registerResolved, registerTemplate, unregisterNode, userCredits } = useProceduralStore();
 
   useEffect(() => {
     return () => unregisterNode(id);
@@ -575,7 +575,7 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
 
   // --- AI Logic ---
   
-  const generateSystemInstruction = (sourceData: any, targetData: any, isRefining: boolean) => {
+  const generateSystemInstruction = (sourceData: any, targetData: any, isRefining: boolean, credits: number) => {
     const sourceW = sourceData.container.bounds.w;
     const sourceH = sourceData.container.bounds.h;
     const targetW = targetData.bounds.w;
@@ -611,6 +611,7 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
         CONTAINER CONTEXT:
         - Source: ${sourceData.container.containerName} (${sourceW}x${sourceH})
         - Target: ${targetData.name} (${targetW}x${targetH})
+        - Current User Balance: ${credits} Credits.
         
         LAYER HIERARCHY (JSON):
         ${JSON.stringify(layerAnalysisData.slice(0, 40))} ... (Truncated)
@@ -626,6 +627,10 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
         - METHOD 'GEOMETRIC': Default. Use purely geometric transforms (scale/translate). 'generativePrompt' MUST be empty string "".
         - METHOD 'GENERATIVE': Use ONLY if user explicitly requests (e.g., "generate", "create", "nano banana") OR if aspect ratio mismatch is > 2.0 (mathematically impossible to fit without distortion).
         - METHOD 'HYBRID': Use geometric layout for main elements but generate background fill.
+        
+        CREDIT AWARENESS:
+        - If balance is 0, DO NOT suggest GENERATIVE methods. Pivot strictly to GEOMETRIC scaling or STRETCH anchors, even if aspect ratio mismatches are severe.
+        - If you perform this forced pivot, you MUST mention "Geometric Pivot due to zero balance" in your 'reasoning' field.
         
         FALLBACK PROTOCOL:
         If standard scaling fails (leaves gaps > 10% or cuts content) AND you provide a 'generativePrompt':
@@ -657,7 +662,8 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
         if (!apiKey) throw new Error("API_KEY missing");
 
         const ai = new GoogleGenAI({ apiKey });
-        const systemInstruction = generateSystemInstruction(sourceData, targetData, history.length > 1);
+        // Pass userCredits to system instruction
+        const systemInstruction = generateSystemInstruction(sourceData, targetData, history.length > 1, userCredits);
 
         const contents = history.map(msg => ({ role: msg.role, parts: msg.parts }));
 

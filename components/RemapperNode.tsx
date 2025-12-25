@@ -33,7 +33,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
   const nodes = useNodes();
   
   // Consume data from Store
-  const { templateRegistry, resolvedRegistry, registerPayload, unregisterNode } = useProceduralStore();
+  const { templateRegistry, resolvedRegistry, registerPayload, unregisterNode, userCredits } = useProceduralStore();
 
   // Cleanup
   useEffect(() => {
@@ -251,7 +251,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
 
             const transformedLayers = transformLayers(sourceData.layers as SerializableLayer[]);
 
-            // --- GENERATIVE INJECTION LOGIC GATE ---
+            // --- GENERATIVE INJECTION LOGIC GATE (WITH CREDIT VALIDATION) ---
             let requiresGeneration = false;
             let status: TransformedPayload['status'] = 'success';
             let generativePromptUsed = null;
@@ -261,27 +261,33 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                 const isExplicit = sourceData.aiStrategy.isExplicitIntent;
                 const isHighStretch = scale > scaleThreshold;
                 const isConfirmed = confirmations[i];
+                const hasCredits = userCredits > 0;
 
                 if (isExplicit) {
-                    // Explicit User Intent ("generate", "recreate") -> Always Trust
-                    requiresGeneration = true;
-                    generativePromptUsed = sourceData.aiStrategy.generativePrompt;
-                } else if (isHighStretch) {
-                    // Implicit Fallback High Stretch -> Require Confirmation
-                    if (isConfirmed) {
+                    // Explicit User Intent ("generate", "recreate") -> Trust but Verify Credits
+                    if (hasCredits) {
                         requiresGeneration = true;
                         generativePromptUsed = sourceData.aiStrategy.generativePrompt;
                     } else {
+                        status = 'error'; // Block generation if no credits
+                        // We do not set requiresGeneration to true, forcing fallback to geometric or error display
+                    }
+                } else if (isHighStretch) {
+                    // Implicit Fallback High Stretch -> Require Confirmation
+                    if (isConfirmed) {
+                        if (hasCredits) {
+                            requiresGeneration = true;
+                            generativePromptUsed = sourceData.aiStrategy.generativePrompt;
+                        } else {
+                            status = 'error';
+                        }
+                    } else {
                         status = 'awaiting_confirmation';
-                        // Keep requiresGeneration false so ExportNode ignores it until confirmed
                     }
                 }
-                // Default: If low stretch and no explicit command, we ignore generativePrompt
-                // and stick to standard geometric transformation (Safe Mode).
             }
 
             // Only inject the layer if the GATE opened (requiresGeneration is true)
-            // or if we are waiting for confirmation (to show preview if implemented later, but here just skip)
             if (requiresGeneration && generativePromptUsed) {
                 const genLayer: TransformedLayer = {
                     id: `gen-layer-${sourceData.name || 'unknown'}`,
@@ -333,7 +339,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
     }
 
     return result;
-  }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations]);
+  }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations, userCredits]);
 
 
   // Sync Payloads to Store
@@ -374,7 +380,12 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
            </svg>
            <span className="text-sm font-semibold text-indigo-100">Procedural Remapper</span>
          </div>
-         <span className="text-[10px] text-indigo-400/70 font-mono">TRANSFORMER</span>
+         <div className="flex flex-col items-end">
+             <span className="text-[10px] text-indigo-400/70 font-mono">TRANSFORMER</span>
+             <span className={`text-[9px] font-bold ${userCredits > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                 {userCredits} Credits
+             </span>
+         </div>
       </div>
 
       {/* Instances List */}
@@ -397,7 +408,6 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                                ? 'bg-indigo-900/30 border-indigo-500/30 text-indigo-200 shadow-sm' 
                                : 'bg-slate-900 border-slate-700 text-slate-500 italic'
                            }`}>
-                             {/* Input Handle - Docked on the specific Input Box */}
                              <Handle 
                                 type="target" 
                                 position={Position.Left} 
@@ -428,7 +438,6 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                                ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-300 shadow-sm' 
                                : 'bg-slate-900 border-slate-700 text-slate-500 italic'
                            }`}>
-                             {/* Input Handle - Docked on the specific Input Box */}
                              <Handle 
                                 type="target" 
                                 position={Position.Left} 
@@ -468,19 +477,40 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                               <div className={`h-full ${instance.strategyUsed ? 'bg-pink-500' : 'bg-emerald-500'}`} style={{ width: '100%' }}></div>
                            </div>
                            
-                           {/* Confirmation UI */}
+                           {/* Confirmation UI (Gated by Credits) */}
                            {instance.payload.status === 'awaiting_confirmation' && (
                                <div className="mt-2 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded flex flex-col space-y-2">
                                    <span className="text-[9px] text-yellow-200 font-medium">
                                        ⚠️ Extreme stretch ({instance.payload.scaleFactor.toFixed(1)}x) detected.
                                        Generative fill available but requires confirmation.
                                    </span>
-                                   <button 
-                                      onClick={() => handleConfirmGeneration(instance.index)}
-                                      className="py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-[9px] font-bold rounded uppercase tracking-wider transition-colors shadow-sm"
-                                   >
-                                      Confirm AI Generation
-                                   </button>
+                                   {userCredits > 0 ? (
+                                       <button 
+                                          onClick={() => handleConfirmGeneration(instance.index)}
+                                          className="py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-[9px] font-bold rounded uppercase tracking-wider transition-colors shadow-sm"
+                                       >
+                                          Confirm AI Generation
+                                       </button>
+                                   ) : (
+                                       <div className="py-1 px-2 bg-red-900/40 border border-red-500 text-red-200 text-[9px] font-bold rounded uppercase tracking-wider text-center shadow-sm flex items-center justify-center space-x-1">
+                                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                           </svg>
+                                           <span>INSUFFICIENT CREDITS</span>
+                                       </div>
+                                   )}
+                               </div>
+                           )}
+
+                           {/* Credit Error UI (Explicit Intent Failure) */}
+                           {instance.payload.status === 'error' && (
+                               <div className="mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded flex flex-col space-y-1">
+                                    <span className="text-[9px] text-red-200 font-bold uppercase">
+                                        Insufficient Credits
+                                    </span>
+                                    <span className="text-[9px] text-red-300">
+                                        Generative fill required but wallet is empty.
+                                    </span>
                                </div>
                            )}
                        </div>
@@ -496,7 +526,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                       position={Position.Right} 
                       id={`result-out-${instance.index}`} 
                       className={`!w-3 !h-3 !-right-1.5 !border-2 transition-colors duration-300 z-50 ${
-                          instance.payload 
+                          instance.payload && instance.payload.status !== 'error' 
                           ? '!bg-emerald-500 !border-white' 
                           : '!bg-slate-700 !border-slate-500'
                       }`} 

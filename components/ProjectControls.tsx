@@ -1,9 +1,11 @@
 import React, { useRef } from 'react';
 import { useReactFlow } from 'reactflow';
 import { ProjectExport } from '../types';
+import { useProceduralStore } from '../store/ProceduralContext';
 
 export const ProjectControls = () => {
     const { toObject, setNodes, setEdges, setViewport } = useReactFlow();
+    const { userCredits, isPro, setCredits, setProStatus } = useProceduralStore();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const onSave = () => {
@@ -15,7 +17,9 @@ export const ProjectControls = () => {
             timestamp: Date.now(),
             nodes: flow.nodes,
             edges: flow.edges,
-            viewport: flow.viewport
+            viewport: flow.viewport,
+            userCredits,
+            isPro
         };
         
         // The 'data' in our nodes consists of SerializableLayer and Metadata, which are JSON-safe.
@@ -60,10 +64,18 @@ export const ProjectControls = () => {
                     // Strict Type Cast after validation
                     const project = rawData as ProjectExport;
 
-                    // Apply State
+                    // Apply React Flow State
                     setNodes(project.nodes);
                     setEdges(project.edges);
                     setViewport(project.viewport);
+
+                    // Restore Credit/Pro State if present
+                    if (typeof project.userCredits === 'number') {
+                        setCredits(project.userCredits);
+                    }
+                    if (typeof project.isPro === 'boolean') {
+                        setProStatus(project.isPro);
+                    }
 
                     // Optional: Check version compatibility
                     if (project.version !== '1.0.0') {
