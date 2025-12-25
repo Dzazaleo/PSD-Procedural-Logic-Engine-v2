@@ -100,6 +100,8 @@ export interface MappingContext {
   message?: string;
   // Metadata Injection: AI Strategy travels with the data
   aiStrategy?: LayoutStrategy;
+  // Visual Sandboxing: Upstream nodes can pass a draft preview
+  previewUrl?: string; 
 }
 
 export interface ValidationIssue {
@@ -138,6 +140,7 @@ export interface TransformedPayload {
     target: { w: number, h: number };
   };
   requiresGeneration?: boolean;
+  previewUrl?: string;
 }
 
 export interface RemapperConfig {

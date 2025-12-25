@@ -2,6 +2,7 @@ import React, { memo, useMemo, useEffect, useCallback, useState } from 'react';
 import { Handle, Position, NodeProps, useEdges, useReactFlow, useNodes } from 'reactflow';
 import { PSDNodeData, SerializableLayer, TransformedPayload, TransformedLayer, MAX_BOUNDARY_VIOLATION_PERCENT, LayoutStrategy } from '../types';
 import { useProceduralStore } from '../store/ProceduralContext';
+import { GoogleGenAI } from "@google/genai";
 
 interface InstanceData {
   index: number;
@@ -13,6 +14,7 @@ interface InstanceData {
     originalBounds?: any;
     layers?: any[];
     aiStrategy?: LayoutStrategy; // Metadata injection from upstream
+    previewUrl?: string; // Draft from Analyst
   };
   target: {
     ready: boolean;
@@ -23,11 +25,95 @@ interface InstanceData {
   strategyUsed?: boolean;
 }
 
+// --- SUB-COMPONENT: Generative Preview Overlay ---
+const GenerativePreviewOverlay = ({ 
+    previewUrl, 
+    isGenerating,
+    scale 
+}: { 
+    previewUrl?: string | null; 
+    isGenerating: boolean; 
+    scale: number;
+}) => {
+    return (
+        <div className="relative w-full mt-2 rounded-md overflow-hidden bg-slate-900/50 border border-indigo-500/30 group">
+             {/* Aspect Ratio Container (Square for now as drafts are 256x256, but container might vary) */}
+             <div className="relative w-full h-32 flex items-center justify-center overflow-hidden">
+                 
+                 {/* 1. The Ghost Image */}
+                 {previewUrl ? (
+                     <div className="absolute inset-0 z-10">
+                         <img 
+                            src={previewUrl} 
+                            alt="AI Ghost" 
+                            className="w-full h-full object-cover opacity-40 mix-blend-screen filter blur-[1px] transition-all duration-700 group-hover:blur-0 group-hover:opacity-60"
+                         />
+                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent"></div>
+                     </div>
+                 ) : (
+                     <div className="absolute inset-0 flex items-center justify-center z-0">
+                         <div className="text-[9px] text-indigo-400/50 font-mono text-center px-4">
+                             {isGenerating ? 'SYNTHESIZING DRAFT...' : 'AWAITING GENERATION'}
+                         </div>
+                     </div>
+                 )}
+
+                 {/* 2. Scanning Line Animation */}
+                 {(isGenerating || previewUrl) && (
+                     <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
+                         <div className="absolute top-0 left-0 w-full h-[2px] bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.8)] animate-scan-y"></div>
+                     </div>
+                 )}
+
+                 {/* 3. Status Badge */}
+                 <div className="absolute bottom-2 left-2 z-30 flex items-center space-x-2">
+                     <span className="text-[8px] bg-indigo-900/80 text-indigo-200 px-1.5 py-0.5 rounded border border-indigo-500/50 backdrop-blur-sm">
+                         AI SANDBOX
+                     </span>
+                     {isGenerating && (
+                         <span className="flex h-1.5 w-1.5 relative">
+                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
+                         </span>
+                     )}
+                 </div>
+
+                 {/* 4. Credit Cost Tooltip (Hover) */}
+                 <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4 text-center cursor-help">
+                      <div className="bg-slate-800 border border-slate-600 rounded p-2 shadow-xl transform translate-y-2 group-hover:translate-y-0 transition-transform">
+                          <p className="text-[10px] text-slate-200 font-bold mb-1">Confirm Generation?</p>
+                          <p className="text-[9px] text-slate-400 leading-tight">
+                              Synthesizing this high-res layer will cost <span className="text-emerald-400 font-bold">1 Credit</span>.
+                          </p>
+                      </div>
+                 </div>
+             </div>
+             
+             {/* Inline styles for custom scan animation if tailwind config missing */}
+             <style>{`
+               @keyframes scan-y {
+                 0% { top: 0%; opacity: 0; }
+                 10% { opacity: 1; }
+                 90% { opacity: 1; }
+                 100% { top: 100%; opacity: 0; }
+               }
+               .animate-scan-y {
+                 animation: scan-y 2.5s linear infinite;
+               }
+             `}</style>
+        </div>
+    );
+};
+
 export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
   // Read instance count from persistent data, default to 1 if new/undefined
   const instanceCount = data.instanceCount || 1;
   const [confirmations, setConfirmations] = useState<Record<number, boolean>>({});
   
+  // Local state for generated draft previews
+  const [previews, setPreviews] = useState<Record<number, string>>({});
+  const [isGeneratingPreview, setIsGeneratingPreview] = useState<Record<number, boolean>>({});
+
   const { setNodes } = useReactFlow();
   const edges = useEdges();
   const nodes = useNodes();
@@ -74,7 +160,8 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                         handleId: sourceEdge.sourceHandle, // Important for strategy lookup
                         layers: context.layers,
                         originalBounds: context.container.bounds,
-                        aiStrategy: context.aiStrategy // Extract injected strategy if present
+                        aiStrategy: context.aiStrategy, // Extract injected strategy if present
+                        previewUrl: context.previewUrl // Extract upstream preview if present
                     };
                  }
              }
@@ -325,7 +412,10 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                 source: { w: sourceRect.w, h: sourceRect.h },
                 target: { w: targetRect.w, h: targetRect.h }
               },
-              requiresGeneration: requiresGeneration
+              requiresGeneration: requiresGeneration,
+              // Attach any generated preview URL for persistence/usage
+              // PRIORITIZE UPSTREAM PREVIEW if available
+              previewUrl: sourceData.previewUrl || previews[i]
             };
         }
 
@@ -339,7 +429,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
     }
 
     return result;
-  }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations, userCredits]);
+  }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations, userCredits, previews]);
 
 
   // Sync Payloads to Store
@@ -350,6 +440,69 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
         }
     });
   }, [instances, id, registerPayload]);
+
+  // LAZY SYNTHESIS: Generate Drafts when AWAITING_CONFIRMATION
+  useEffect(() => {
+    instances.forEach(instance => {
+        const needsPreview = instance.payload?.status === 'awaiting_confirmation' && 
+                             instance.payload.requiresGeneration === false; 
+        
+        const hasPrompt = !!instance.source.aiStrategy?.generativePrompt;
+        const isAwaiting = instance.payload?.status === 'awaiting_confirmation';
+        
+        // Skip if preview already exists (either from upstream or local)
+        const existingPreview = instance.payload?.previewUrl;
+
+        // Only generate if we haven't already and aren't currently generating AND no upstream preview
+        if (isAwaiting && hasPrompt && !existingPreview && !isGeneratingPreview[instance.index]) {
+             const prompt = instance.source.aiStrategy!.generativePrompt;
+             
+             const generateDraft = async () => {
+                 setIsGeneratingPreview(prev => ({...prev, [instance.index]: true}));
+                 
+                 try {
+                     const apiKey = process.env.API_KEY;
+                     if (!apiKey) return;
+                     
+                     const ai = new GoogleGenAI({ apiKey });
+                     // Use gemini-2.5-flash-image for fast drafts
+                     const response = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash-image',
+                        contents: { parts: [{ text: prompt }] },
+                        config: {
+                             imageConfig: {
+                                // Request square aspect ratio for preview box usually
+                                aspectRatio: "1:1"
+                             }
+                        }
+                     });
+                     
+                     // Extract base64
+                     let base64Data = null;
+                     for (const part of response.candidates?.[0]?.content?.parts || []) {
+                        if (part.inlineData) {
+                            base64Data = part.inlineData.data;
+                            break;
+                        }
+                     }
+                     
+                     if (base64Data) {
+                         const url = `data:image/png;base64,${base64Data}`;
+                         setPreviews(prev => ({...prev, [instance.index]: url}));
+                     }
+
+                 } catch (e) {
+                     console.error("Draft Generation Failed", e);
+                 } finally {
+                     setIsGeneratingPreview(prev => ({...prev, [instance.index]: false}));
+                 }
+             };
+             
+             generateDraft();
+        }
+    });
+  }, [instances, previews, isGeneratingPreview]);
+
 
   const addInstance = useCallback(() => {
     setNodes((nds) =>
@@ -477,22 +630,29 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                               <div className={`h-full ${instance.strategyUsed ? 'bg-pink-500' : 'bg-emerald-500'}`} style={{ width: '100%' }}></div>
                            </div>
                            
-                           {/* Confirmation UI (Gated by Credits) */}
+                           {/* Confirmation & Sandboxing UI */}
                            {instance.payload.status === 'awaiting_confirmation' && (
                                <div className="mt-2 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded flex flex-col space-y-2">
-                                   <span className="text-[9px] text-yellow-200 font-medium">
-                                       ⚠️ Extreme stretch ({instance.payload.scaleFactor.toFixed(1)}x) detected.
-                                       Generative fill available but requires confirmation.
+                                   <span className="text-[9px] text-yellow-200 font-medium leading-tight">
+                                       ⚠️ Extreme stretch detected. Previewing Generative Fill below.
                                    </span>
+                                   
+                                   {/* Generative Preview Sandbox */}
+                                   <GenerativePreviewOverlay 
+                                       previewUrl={previews[instance.index]}
+                                       isGenerating={!!isGeneratingPreview[instance.index]}
+                                       scale={instance.payload.scaleFactor}
+                                   />
+
                                    {userCredits > 0 ? (
                                        <button 
                                           onClick={() => handleConfirmGeneration(instance.index)}
-                                          className="py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-[9px] font-bold rounded uppercase tracking-wider transition-colors shadow-sm"
+                                          className="py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-[9px] font-bold rounded uppercase tracking-wider transition-colors shadow-sm mt-1"
                                        >
                                           Confirm AI Generation
                                        </button>
                                    ) : (
-                                       <div className="py-1 px-2 bg-red-900/40 border border-red-500 text-red-200 text-[9px] font-bold rounded uppercase tracking-wider text-center shadow-sm flex items-center justify-center space-x-1">
+                                       <div className="py-1 px-2 bg-red-900/40 border border-red-500 text-red-200 text-[9px] font-bold rounded uppercase tracking-wider text-center shadow-sm flex items-center justify-center space-x-1 mt-1">
                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                            </svg>

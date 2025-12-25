@@ -472,7 +472,7 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
                 msg.role === 'user' && 
                 /\b(generate|recreate|nano banana)\b/i.test(msg.parts[0].text)
             );
-
+            
             // Clone the context to avoid mutating the original reference from upstream
             const augmentedContext: MappingContext = {
                 ...sourceData,
@@ -480,16 +480,18 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
                 aiStrategy: instanceState?.layoutStrategy ? {
                     ...instanceState.layoutStrategy,
                     isExplicitIntent: hasExplicitKeywords
-                } : undefined
+                } : undefined,
+                // Preserve existing previewUrl if present in the registry (handled by performAnalysis update)
+                // However, sourceData comes from upstream resolver, so it won't have the preview.
+                // We rely on performAnalysis to update the registry with the preview.
             };
             
-            registerResolved(id, `source-out-${i}`, augmentedContext);
+             registerResolved(id, `source-out-${i}`, augmentedContext);
         }
 
         // 2. Target Relay (TemplateRegistry Construction)
-        // Collect target definitions to create a synthetic template for downstream consumption
+        // ... (existing logic)
         if (targetData) {
-            // Only capture dimensions from the first valid target connected
             if (canvasDims.width === 0) {
                 const edge = edges.find(e => e.target === id && e.targetHandle === `target-in-${i}`);
                 if (edge) {
@@ -498,12 +500,10 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
                 }
             }
 
-            // Map the opaque handle ID 'target-out-${i}' to the actual container definition
-            // This allows RemapperNode to find 'target-out-0' in the registry and get the correct 'BG' container
             syntheticContainers.push({
                 id: `proxy-target-${i}`,
-                name: `target-out-${i}`, // CRITICAL: This MUST match the handle ID connected to Remapper
-                originalName: targetData.name, // Preserve original semantic name
+                name: `target-out-${i}`, 
+                originalName: targetData.name,
                 bounds: targetData.bounds,
                 normalized: {
                     x: canvasDims.width ? targetData.bounds.x / canvasDims.width : 0,
@@ -575,6 +575,33 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
 
   // --- AI Logic ---
   
+  // DRAFT GENERATION HELPER
+  const generateDraft = async (prompt: string): Promise<string | null> => {
+     try {
+         const apiKey = process.env.API_KEY;
+         if (!apiKey) return null;
+         
+         const ai = new GoogleGenAI({ apiKey });
+         const response = await ai.models.generateContent({
+             model: 'gemini-2.5-flash-image',
+             contents: { parts: [{ text: prompt }] },
+             config: {
+                 imageConfig: { aspectRatio: "1:1" } // Default square for draft
+             }
+         });
+         
+         for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+         }
+         return null;
+     } catch (e) {
+         console.error("Draft Generation Failed", e);
+         return null;
+     }
+  };
+
   const generateSystemInstruction = (sourceData: any, targetData: any, isRefining: boolean, credits: number) => {
     const sourceW = sourceData.container.bounds.w;
     const sourceH = sourceData.container.bounds.h;
@@ -726,10 +753,32 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
 
         const finalHistory = [...history, newAiMessage];
         
+        // --- DRAFT GENERATION GATE ---
+        // If the analyst suggests generation, and user has credits, trigger fast-track draft
+        let previewUrl: string | null = null;
+        if (json.generativePrompt && userCredits > 0) {
+             console.log("Auto-Drafting triggered for:", json.generativePrompt);
+             previewUrl = await generateDraft(json.generativePrompt);
+        }
+
+        // Update Component State
         updateInstanceState(index, {
             chatHistory: finalHistory,
             layoutStrategy: json
         });
+
+        // Store Sync: Immediately push new context downstream
+        // This includes the new Strategy AND the Draft Preview if generated
+        const augmentedContext: MappingContext = {
+            ...sourceData,
+            aiStrategy: {
+                ...json,
+                isExplicitIntent: history.some(msg => msg.role === 'user' && /\b(generate|recreate|nano banana)\b/i.test(msg.parts[0].text))
+            },
+            previewUrl: previewUrl || undefined
+        };
+        
+        registerResolved(id, `source-out-${index}`, augmentedContext);
 
       } catch (e: any) {
           console.error("Analysis Failed:", e);

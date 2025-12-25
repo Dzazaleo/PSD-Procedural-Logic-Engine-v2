@@ -32,6 +32,7 @@ interface ProceduralContextType extends ProceduralState {
   registerResolved: (nodeId: string, handleId: string, context: MappingContext) => void;
   registerPayload: (nodeId: string, handleId: string, payload: TransformedPayload) => void;
   registerAnalysis: (nodeId: string, handleId: string, strategy: LayoutStrategy) => void;
+  updatePreview: (nodeId: string, handleId: string, url: string) => void; // New method for AI Ghosts
   unregisterNode: (nodeId: string) => void;
   triggerGlobalRefresh: () => void;
   
@@ -121,6 +122,31 @@ export const ProceduralStoreProvider: React.FC<{ children: React.ReactNode }> = 
     });
   }, []);
 
+  // NEW: Granular update for previews to avoid full re-registration loops
+  const updatePreview = useCallback((nodeId: string, handleId: string, url: string) => {
+    setPayloadRegistry(prev => {
+      const nodeRecord = prev[nodeId];
+      if (!nodeRecord) return prev; // Cannot update preview if payload doesn't exist
+      
+      const currentPayload = nodeRecord[handleId];
+      if (!currentPayload) return prev;
+
+      // Avoid unnecessary updates if URL matches
+      if (currentPayload.previewUrl === url) return prev;
+
+      return {
+        ...prev,
+        [nodeId]: {
+          ...nodeRecord,
+          [handleId]: {
+            ...currentPayload,
+            previewUrl: url
+          }
+        }
+      };
+    });
+  }, []);
+
   const unregisterNode = useCallback((nodeId: string) => {
     setPsdRegistry(prev => { const { [nodeId]: _, ...rest } = prev; return rest; });
     setTemplateRegistry(prev => { const { [nodeId]: _, ...rest } = prev; return rest; });
@@ -168,6 +194,7 @@ export const ProceduralStoreProvider: React.FC<{ children: React.ReactNode }> = 
     registerResolved,
     registerPayload,
     registerAnalysis,
+    updatePreview,
     unregisterNode,
     triggerGlobalRefresh,
     consumeCredit,
@@ -177,7 +204,7 @@ export const ProceduralStoreProvider: React.FC<{ children: React.ReactNode }> = 
   }), [
     psdRegistry, templateRegistry, resolvedRegistry, payloadRegistry, analysisRegistry, globalVersion,
     userCredits, isPro,
-    registerPsd, registerTemplate, registerResolved, registerPayload, registerAnalysis, 
+    registerPsd, registerTemplate, registerResolved, registerPayload, registerAnalysis, updatePreview,
     unregisterNode, triggerGlobalRefresh, consumeCredit, addCredits, setCredits, setProStatus
   ]);
 

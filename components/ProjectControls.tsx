@@ -11,11 +11,30 @@ export const ProjectControls = () => {
     const onSave = () => {
         const flow = toObject();
         
-        // Wrap the raw flow object into our ProjectExport schema
+        // PERSISTENCE EXCLUSION: Strip transient "AI Ghost" images (base64) from JSON
+        // This ensures the saved file remains lightweight (~KB instead of MBs)
+        const sanitizedNodes = flow.nodes.map(node => {
+            if (node.data && node.data.transformedPayload && node.data.transformedPayload.previewUrl) {
+                // Clone the data structure to safely mutate the copy
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        transformedPayload: {
+                            ...node.data.transformedPayload,
+                            previewUrl: undefined // Remove binary data
+                        }
+                    }
+                };
+            }
+            return node;
+        });
+        
+        // Wrap the sanitized flow object into our ProjectExport schema
         const projectData: ProjectExport = {
             version: '1.0.0',
             timestamp: Date.now(),
-            nodes: flow.nodes,
+            nodes: sanitizedNodes,
             edges: flow.edges,
             viewport: flow.viewport,
             userCredits,
