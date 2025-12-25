@@ -123,6 +123,11 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
 
          if (semanticTarget === slotName) {
              map.set(slotName, payload);
+             
+             // Check for upstream errors blocking export
+             if (payload.status === 'error') {
+                 errors.push(`Slot '${slotName}': Upstream generation error (Check credits).`);
+             }
          } else {
              // FALLBACK: Mismatch detected - Strictly enforce procedural integrity
              const msg = `PROCEDURAL VIOLATION: Payload targeting '${semanticTarget}' is miswired to slot '${slotName}'.`;
@@ -168,7 +173,14 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
 
       for (const container of containers) {
           const payload = slotConnections.get(container.name);
+          
+          // SAFETY CHECK: Only proceed with generation if explicitly requested AND confirmed
           if (payload && payload.requiresGeneration) {
+              if (!payload.isConfirmed) {
+                  console.warn(`[Export] Skipping generation for ${container.name}: Not Confirmed. Reverting to geometric fallback.`);
+                  continue; 
+              }
+
               const findGenerativeLayers = (layers: TransformedLayer[]) => {
                   for (const layer of layers) {
                       if (layer.type === 'generative' && layer.generativePrompt) {
@@ -230,25 +242,11 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
                         canvas: asset // Inject synthetic pixel data
                     };
                 } else {
-                    // Fallback for failed generation: Placeholder
-                    newLayer = {
-                        name: `[FAILED GEN] ${metaLayer.name}`,
-                        top: metaLayer.coords.y,
-                        left: metaLayer.coords.x,
-                        bottom: metaLayer.coords.y + metaLayer.coords.h,
-                        right: metaLayer.coords.x + metaLayer.coords.w,
-                        hidden: false,
-                        opacity: 255,
-                        // Red placeholder
-                        canvas: (() => {
-                            const c = document.createElement('canvas');
-                            c.width = metaLayer.coords.w;
-                            c.height = metaLayer.coords.h;
-                            const ctx = c.getContext('2d');
-                            if(ctx) { ctx.fillStyle = '#ef4444'; ctx.fillRect(0,0,c.width,c.height); }
-                            return c;
-                        })()
-                    };
+                    // Fallback for failed/skipped generation:
+                    // If the asset doesn't exist (because we skipped generation due to lack of confirmation),
+                    // we DO NOT create a placeholder. We simply omit this layer from the export.
+                    // This creates a clean "Geometric Fallback" PSD without red boxes.
+                    continue; 
                 }
             } 
             // BRANCH 2: Standard Layer (Clone from Source)
@@ -370,6 +368,7 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
                   const isFilled = slotConnections.has(container.name);
                   const payload = slotConnections.get(container.name);
                   const isGen = payload?.requiresGeneration;
+                  const isConfirmed = payload?.isConfirmed;
 
                   return (
                       <div 
@@ -398,9 +397,16 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
                                   {container.name}
                               </span>
                               {isGen && (
-                                  <span className="text-[8px] text-purple-400 font-mono leading-none mt-0.5">
-                                      ✨ AI GENERATION
-                                  </span>
+                                  <div className="flex items-center space-x-1 mt-0.5">
+                                      <span className="text-[8px] text-purple-400 font-mono leading-none">
+                                          ✨ AI GENERATION
+                                      </span>
+                                      {!isConfirmed && (
+                                          <span className="text-[8px] text-yellow-500 font-bold leading-none" title="Not Confirmed (Will Fallback)">
+                                              (UNCONFIRMED)
+                                          </span>
+                                      )}
+                                  </div>
                               )}
                           </div>
                           

@@ -26,34 +26,41 @@ interface InstanceData {
 }
 
 // --- SUB-COMPONENT: Generative Preview Overlay ---
+interface OverlayProps {
+    previewUrl?: string | null;
+    isGenerating: boolean;
+    scale: number;
+    onConfirm: () => void;
+    userCredits: number;
+    canConfirm: boolean;
+    isConfirmed: boolean;
+}
+
 const GenerativePreviewOverlay = ({ 
     previewUrl, 
     isGenerating,
-    scale 
-}: { 
-    previewUrl?: string | null; 
-    isGenerating: boolean; 
-    scale: number;
-}) => {
+    scale,
+    onConfirm,
+    userCredits,
+    canConfirm,
+    isConfirmed
+}: OverlayProps) => {
     return (
-        <div className={`relative w-full mt-2 rounded-md overflow-hidden bg-slate-900/50 border transition-all duration-500 ${isGenerating ? 'border-indigo-500/30' : 'border-purple-500/50 animate-pulse'} group`}>
-             {/* Aspect Ratio Container - Expanded to 160px (h-40) for better visibility */}
-             <div className="relative w-full h-40 flex items-center justify-center overflow-hidden">
+        <div className={`relative w-full mt-2 rounded-md overflow-hidden bg-slate-900/50 border transition-all duration-500 ${isGenerating ? 'border-indigo-500/30' : 'border-purple-500/50'}`}>
+             {/* Aspect Ratio Container - Fixed height 160px */}
+             <div className="relative w-full h-40 flex items-center justify-center overflow-hidden group">
                  
                  {/* 1. The Ghost Image */}
                  {previewUrl ? (
-                     <div className="absolute inset-0 z-10">
-                         {/* Stylized "Ghost" Rendering: Grayscale + Opacity + Screen Blend */}
-                         <img 
-                            src={previewUrl} 
-                            alt="AI Ghost" 
-                            className="w-full h-full object-cover opacity-50 grayscale-[0.3] mix-blend-screen filter blur-[0.5px] transition-all duration-700 group-hover:blur-0 group-hover:grayscale-0 group-hover:opacity-90"
-                         />
-                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 to-transparent"></div>
-                         
-                         {/* Tech Grid Overlay */}
-                         <div className="absolute inset-0 opacity-20 bg-[linear-gradient(rgba(139,92,246,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(139,92,246,0.1)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
-                     </div>
+                     <img 
+                        src={previewUrl} 
+                        alt="AI Ghost" 
+                        className={`w-full h-full object-cover transition-all duration-700 
+                            ${isConfirmed 
+                                ? 'opacity-100 grayscale-0 mix-blend-normal' 
+                                : 'opacity-40 grayscale-[0.2] mix-blend-screen animate-pulse'
+                            }`}
+                     />
                  ) : (
                      <div className="absolute inset-0 flex items-center justify-center z-0">
                          <div className="text-[9px] text-purple-400/50 font-mono text-center px-4 animate-pulse">
@@ -62,17 +69,40 @@ const GenerativePreviewOverlay = ({
                      </div>
                  )}
 
-                 {/* 2. Scanning Line Animation */}
-                 {(isGenerating || previewUrl) && (
+                 {/* 2. Scanning Line Animation (only during gen) */}
+                 {isGenerating && (
                      <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
                          <div className="absolute top-0 left-0 w-full h-[2px] bg-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.8)] animate-scan-y"></div>
                      </div>
                  )}
 
-                 {/* 3. Status Badge */}
-                 <div className="absolute bottom-2 left-2 z-30 flex items-center space-x-2">
-                     <span className="text-[8px] bg-purple-900/80 text-purple-200 px-1.5 py-0.5 rounded border border-purple-500/50 backdrop-blur-sm shadow-[0_0_8px_rgba(168,85,247,0.4)]">
-                         AI GHOST
+                 {/* 3. Button Overlay - Only if waiting for confirmation */}
+                 {canConfirm && !isConfirmed && previewUrl && (
+                     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                         {userCredits > 0 ? (
+                             <button 
+                                onClick={(e) => { e.stopPropagation(); onConfirm(); }}
+                                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white py-2 px-4 rounded shadow-[0_0_15px_rgba(168,85,247,0.5)] border border-white/20 transform hover:scale-105 transition-all flex flex-col items-center"
+                             >
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Confirm Generation</span>
+                                <span className="text-[8px] opacity-90 font-mono mt-0.5">1 Credit Cost</span>
+                             </button>
+                         ) : (
+                             <div className="bg-red-900/90 border border-red-500 text-red-100 px-3 py-2 rounded text-[10px] font-bold uppercase tracking-wider shadow-lg backdrop-blur-md">
+                                 Insufficient Credits
+                             </div>
+                         )}
+                     </div>
+                 )}
+
+                 {/* 4. Status Badge */}
+                 <div className="absolute bottom-2 left-2 z-20 flex items-center space-x-2 pointer-events-none">
+                     <span className={`text-[8px] px-1.5 py-0.5 rounded border backdrop-blur-sm shadow-[0_0_8px_rgba(168,85,247,0.4)]
+                        ${isConfirmed 
+                            ? 'bg-emerald-900/80 text-emerald-200 border-emerald-500/50' 
+                            : 'bg-purple-900/80 text-purple-200 border-purple-500/50'
+                        }`}>
+                         {isConfirmed ? 'GHOST CONFIRMED' : 'AI GHOST'}
                      </span>
                      {isGenerating && (
                          <span className="flex h-1.5 w-1.5 relative">
@@ -81,19 +111,8 @@ const GenerativePreviewOverlay = ({
                          </span>
                      )}
                  </div>
-
-                 {/* 4. Credit Cost Tooltip (Hover) */}
-                 <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4 text-center cursor-help">
-                      <div className="bg-slate-800 border border-slate-600 rounded p-2 shadow-xl transform translate-y-2 group-hover:translate-y-0 transition-transform">
-                          <p className="text-[10px] text-slate-200 font-bold mb-1">Confirm Generation?</p>
-                          <p className="text-[9px] text-slate-400 leading-tight">
-                              Synthesizing this high-res layer will cost <span className="text-emerald-400 font-bold">1 Credit</span>.
-                          </p>
-                      </div>
-                 </div>
              </div>
              
-             {/* Inline styles for custom scan animation if tailwind config missing */}
              <style>{`
                @keyframes scan-y {
                  0% { top: 0%; opacity: 0; }
@@ -342,40 +361,33 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
 
             const transformedLayers = transformLayers(sourceData.layers as SerializableLayer[]);
 
-            // --- GENERATIVE INJECTION LOGIC GATE (WITH CREDIT VALIDATION) ---
+            // --- GENERATIVE INJECTION LOGIC GATE ---
             let requiresGeneration = false;
             let status: TransformedPayload['status'] = 'success';
             let generativePromptUsed = null;
+            const isConfirmed = confirmations[i];
 
             if (sourceData.aiStrategy?.generativePrompt) {
                 const scaleThreshold = 2.0; // 200% stretch safety limit
                 const isExplicit = sourceData.aiStrategy.isExplicitIntent;
                 const isHighStretch = scale > scaleThreshold;
-                const isConfirmed = confirmations[i];
                 const hasCredits = userCredits > 0;
-
-                if (isExplicit) {
-                    // Explicit User Intent ("generate", "recreate") -> Trust but Verify Credits
-                    if (hasCredits) {
-                        requiresGeneration = true;
-                        generativePromptUsed = sourceData.aiStrategy.generativePrompt;
-                    } else {
-                        status = 'error'; // Block generation if no credits
-                        // We do not set requiresGeneration to true, forcing fallback to geometric or error display
-                    }
-                } else if (isHighStretch) {
-                    // Implicit Fallback High Stretch -> Require Confirmation
-                    if (isConfirmed) {
-                        if (hasCredits) {
-                            requiresGeneration = true;
-                            generativePromptUsed = sourceData.aiStrategy.generativePrompt;
-                        } else {
-                            status = 'error';
-                        }
-                    } else {
-                        status = 'awaiting_confirmation';
-                    }
+                
+                // Logic: A generative prompt exists. We need to decide if we use it.
+                // Using it means setting requiresGeneration = true.
+                
+                // Case 1: Confirmed via UI
+                if (isConfirmed && hasCredits) {
+                    requiresGeneration = true;
+                    generativePromptUsed = sourceData.aiStrategy.generativePrompt;
+                    status = 'success';
                 }
+                // Case 2: Needs Confirmation (Explicit Intent OR High Stretch)
+                else if (isExplicit || isHighStretch) {
+                    status = 'awaiting_confirmation';
+                }
+                // Case 3: Geometric Fallback (Implicit, low stretch, no confirmation)
+                // We do nothing, requiresGeneration stays false.
             }
 
             // Only inject the layer if the GATE opened (requiresGeneration is true)
@@ -419,7 +431,8 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
               requiresGeneration: requiresGeneration,
               // Attach any generated preview URL for persistence/usage
               // PRIORITIZE UPSTREAM PREVIEW if available
-              previewUrl: sourceData.previewUrl || previews[i]
+              previewUrl: sourceData.previewUrl || previews[i],
+              isConfirmed: isConfirmed
             };
         }
 
@@ -547,7 +560,14 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
 
       {/* Instances List */}
       <div className="flex flex-col">
-          {instances.map((instance) => (
+          {instances.map((instance) => {
+             // Determine if overlay should be shown
+             const hasPreview = !!instance.payload?.previewUrl;
+             const isAwaiting = instance.payload?.status === 'awaiting_confirmation';
+             const isConfirmed = !!confirmations[instance.index];
+             const showOverlay = hasPreview || isAwaiting;
+
+             return (
              <div key={instance.index} className="relative p-3 border-b border-slate-700/50 bg-slate-800 space-y-3 hover:bg-slate-700/20 transition-colors first:rounded-t-none">
                 
                 {/* Inputs Row */}
@@ -634,35 +654,25 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                               <div className={`h-full ${instance.strategyUsed ? 'bg-pink-500' : 'bg-emerald-500'}`} style={{ width: '100%' }}></div>
                            </div>
                            
-                           {/* Confirmation & Sandboxing UI */}
-                           {instance.payload.status === 'awaiting_confirmation' && (
-                               <div className="mt-2 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded flex flex-col space-y-2">
-                                   <span className="text-[9px] text-yellow-200 font-medium leading-tight">
-                                       ⚠️ Extreme stretch detected. Previewing Generative Fill below.
-                                   </span>
+                           {/* Confirmation & Ghost UI */}
+                           {showOverlay && (
+                               <div className="mt-2 p-2 bg-slate-900/50 border border-slate-700 rounded flex flex-col space-y-2">
+                                   {isAwaiting && (
+                                        <span className="text-[9px] text-yellow-200 font-medium leading-tight">
+                                            ⚠️ High procedural distortion.
+                                        </span>
+                                   )}
                                    
                                    {/* Generative Preview Sandbox */}
                                    <GenerativePreviewOverlay 
-                                       previewUrl={previews[instance.index]}
+                                       previewUrl={instance.payload.previewUrl || previews[instance.index]}
                                        isGenerating={!!isGeneratingPreview[instance.index]}
                                        scale={instance.payload.scaleFactor}
+                                       onConfirm={() => handleConfirmGeneration(instance.index)}
+                                       userCredits={userCredits}
+                                       canConfirm={isAwaiting}
+                                       isConfirmed={isConfirmed}
                                    />
-
-                                   {userCredits > 0 ? (
-                                       <button 
-                                          onClick={() => handleConfirmGeneration(instance.index)}
-                                          className="py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-[9px] font-bold rounded uppercase tracking-wider transition-colors shadow-sm mt-1"
-                                       >
-                                          Confirm AI Generation
-                                       </button>
-                                   ) : (
-                                       <div className="py-1 px-2 bg-red-900/40 border border-red-500 text-red-200 text-[9px] font-bold rounded uppercase tracking-wider text-center shadow-sm flex items-center justify-center space-x-1 mt-1">
-                                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                           </svg>
-                                           <span>INSUFFICIENT CREDITS</span>
-                                       </div>
-                                   )}
                                </div>
                            )}
 
@@ -699,7 +709,8 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                    />
                 </div>
              </div>
-          ))}
+             );
+          })}
       </div>
 
       <button 

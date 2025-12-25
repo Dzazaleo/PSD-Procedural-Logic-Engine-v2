@@ -141,6 +141,7 @@ export interface TransformedPayload {
   };
   requiresGeneration?: boolean;
   previewUrl?: string;
+  isConfirmed?: boolean;
 }
 
 export interface RemapperConfig {

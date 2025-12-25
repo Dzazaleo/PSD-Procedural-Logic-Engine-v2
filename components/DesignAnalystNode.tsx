@@ -776,7 +776,8 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
         registerResolved(id, `source-out-${index}`, augmentedContext);
 
         // Async Draft Synthesis
-        if (json.generativePrompt && userCredits > 0) {
+        // CONSTRAINT: Only trigger if method is GENERATIVE (or explicitly requested)
+        if (json.method === 'GENERATIVE' && json.generativePrompt) {
              // Do not await - let this run in background to update UI later
              generateDraft(json.generativePrompt).then((url) => {
                  if (url) {
@@ -785,7 +786,9 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
                      // Update Store with Preview
                      const contextWithPreview: MappingContext = {
                          ...augmentedContext,
-                         previewUrl: url
+                         previewUrl: url,
+                         // Mark as free preview explicitly in metadata if needed via message
+                         message: "Free Preview: Draft"
                      };
                      registerResolved(id, `source-out-${index}`, contextWithPreview);
                  }
