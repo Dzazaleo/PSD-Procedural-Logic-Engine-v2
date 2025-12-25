@@ -43,7 +43,10 @@ const StrategyCard: React.FC<{ strategy: LayoutStrategy, modelConfig: ModelConfi
     const overrideCount = strategy.overrides?.length || 0;
     
     return (
-        <div className={`bg-slate-800/80 border-l-2 p-3 rounded text-xs space-y-3 w-full ${modelConfig.badgeClass.replace('bg-', 'border-').split(' ')[2]}`}>
+        <div 
+            className={`bg-slate-800/80 border-l-2 p-3 rounded text-xs space-y-3 w-full cursor-text ${modelConfig.badgeClass.replace('bg-', 'border-').split(' ')[2]}`}
+            onMouseDown={(e) => e.stopPropagation()}
+        >
              <div className="flex justify-between border-b border-slate-700 pb-2">
                 <span className={`font-bold ${modelConfig.badgeClass.includes('yellow') ? 'text-yellow-400' : 'text-blue-300'}`}>SEMANTIC RECOMPOSITION</span>
                 <span className="text-slate-400">{strategy.anchor}</span>
@@ -108,6 +111,23 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
         }
     }, [state.chatHistory.length, isAnalyzing]);
+
+    // Native Wheel Isolation: Prevents scroll events from bubbling to ReactFlow (Zoom)
+    useEffect(() => {
+        const container = chatContainerRef.current;
+        if (!container) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            e.stopPropagation();
+        };
+
+        // Passive: false allows us to control the event, though stopPropagation works regardless
+        container.addEventListener('wheel', handleWheel, { passive: false });
+
+        return () => {
+            container.removeEventListener('wheel', handleWheel);
+        };
+    }, []);
 
     const activeModelConfig = MODELS[state.selectedModel];
     const isReady = !!sourceData && !!targetData;
@@ -270,12 +290,11 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                     </div>
                 </div>
 
-                {/* Chat Console - EXPANDED */}
+                {/* Chat Console - EXPANDED & EVENT ISOLATED */}
                 <div 
                     ref={chatContainerRef}
-                    className={`nodrag nopan ${compactMode ? 'h-48' : 'h-64'} overflow-y-auto border border-slate-700 bg-slate-900 rounded p-3 space-y-3 custom-scrollbar transition-all shadow-inner`}
-                    onWheel={(e) => e.stopPropagation()} 
-                    onMouseDown={(e) => e.stopPropagation()}
+                    className={`nodrag nopan ${compactMode ? 'h-48' : 'h-64'} overflow-y-auto border border-slate-700 bg-slate-900 rounded p-3 space-y-3 custom-scrollbar transition-all shadow-inner cursor-auto`}
+                    onMouseDown={(e) => e.stopPropagation()} 
                 >
                     {state.chatHistory.length === 0 && (
                         <div className="h-full flex flex-col items-center justify-center text-slate-600 italic text-xs opacity-50">
