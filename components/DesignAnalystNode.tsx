@@ -582,9 +582,10 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
          if (!apiKey) return null;
          
          const ai = new GoogleGenAI({ apiKey });
+         // Async Constraint: Low-resolution request
          const response = await ai.models.generateContent({
              model: 'gemini-2.5-flash-image',
-             contents: { parts: [{ text: prompt }] },
+             contents: { parts: [{ text: `Generate a quick low-resolution draft sketch (256x256) for: ${prompt}` }] },
              config: {
                  imageConfig: { aspectRatio: "1:1" } // Default square for draft
              }
@@ -753,32 +754,43 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
 
         const finalHistory = [...history, newAiMessage];
         
-        // --- DRAFT GENERATION GATE ---
-        // If the analyst suggests generation, and user has credits, trigger fast-track draft
-        let previewUrl: string | null = null;
-        if (json.generativePrompt && userCredits > 0) {
-             console.log("Auto-Drafting triggered for:", json.generativePrompt);
-             previewUrl = await generateDraft(json.generativePrompt);
-        }
-
-        // Update Component State
+        // Update Component State IMMEDIATELY
         updateInstanceState(index, {
             chatHistory: finalHistory,
             layoutStrategy: json
         });
 
-        // Store Sync: Immediately push new context downstream
-        // This includes the new Strategy AND the Draft Preview if generated
+        // Determine Intent
+        const isExplicitIntent = history.some(msg => msg.role === 'user' && /\b(generate|recreate|nano banana)\b/i.test(msg.parts[0].text));
+
+        // Store Sync: Push Strategy IMMEDIATELY (No Preview yet)
         const augmentedContext: MappingContext = {
             ...sourceData,
             aiStrategy: {
                 ...json,
-                isExplicitIntent: history.some(msg => msg.role === 'user' && /\b(generate|recreate|nano banana)\b/i.test(msg.parts[0].text))
+                isExplicitIntent
             },
-            previewUrl: previewUrl || undefined
+            previewUrl: undefined // Clear old preview if any on new analysis
         };
         
         registerResolved(id, `source-out-${index}`, augmentedContext);
+
+        // Async Draft Synthesis
+        if (json.generativePrompt && userCredits > 0) {
+             // Do not await - let this run in background to update UI later
+             generateDraft(json.generativePrompt).then((url) => {
+                 if (url) {
+                     console.log("PREVIEW_GENERATED: 0 Credits Consumed");
+                     
+                     // Update Store with Preview
+                     const contextWithPreview: MappingContext = {
+                         ...augmentedContext,
+                         previewUrl: url
+                     };
+                     registerResolved(id, `source-out-${index}`, contextWithPreview);
+                 }
+             });
+        }
 
       } catch (e: any) {
           console.error("Analysis Failed:", e);
