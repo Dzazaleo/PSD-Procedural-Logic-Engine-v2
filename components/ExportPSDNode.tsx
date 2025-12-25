@@ -4,9 +4,84 @@ import { TransformedLayer, TransformedPayload } from '../types';
 import { useProceduralStore } from '../store/ProceduralContext';
 import { findLayerByPath, writePsdFile } from '../services/psdService';
 import { Layer, Psd } from 'ag-psd';
+import { GoogleGenAI } from "@google/genai";
+
+// Helper: Calculate closest supported aspect ratio for Nano Banana
+const getClosestAspectRatio = (width: number, height: number): string => {
+    const ratio = width / height;
+    const targets = {
+        "1:1": 1,
+        "3:4": 0.75,
+        "4:3": 1.333,
+        "9:16": 0.5625,
+        "16:9": 1.777
+    };
+    
+    // Find closest aspect ratio key
+    return Object.keys(targets).reduce((prev, curr) => 
+        Math.abs(targets[curr as keyof typeof targets] - ratio) < Math.abs(targets[prev as keyof typeof targets] - ratio) ? curr : prev
+    );
+};
+
+// Helper: Generate Image using GenAI SDK and convert to Canvas
+const generateLayerImage = async (prompt: string, width: number, height: number): Promise<HTMLCanvasElement | null> => {
+    try {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) throw new Error("API Key missing");
+
+        const ai = new GoogleGenAI({ apiKey });
+        
+        // Use gemini-2.5-flash-image for general image generation tasks
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                imageConfig: {
+                    aspectRatio: getClosestAspectRatio(width, height) as any
+                }
+            }
+        });
+        
+        // Extract base64
+        let base64Data = null;
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                base64Data = part.inlineData.data;
+                break;
+            }
+        }
+        
+        if (!base64Data) throw new Error("No image data returned from API");
+        
+        // Convert Base64 to Canvas (ag-psd compatible)
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    // Draw and stretch to fit exact procedural bounds
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas);
+                } else {
+                    resolve(null);
+                }
+            };
+            img.onerror = () => resolve(null);
+            img.src = `data:image/png;base64,${base64Data}`;
+        });
+
+    } catch (e) {
+        console.error("Generative Fill Failed:", e);
+        return null;
+    }
+};
 
 export const ExportPSDNode = memo(({ id }: NodeProps) => {
   const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string>('Idle');
   const [exportError, setExportError] = useState<string | null>(null);
 
   const edges = useEdges();
@@ -74,6 +149,7 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
     
     setIsExporting(true);
     setExportError(null);
+    setExportStatus('Analyzing procedural graph...');
 
     try {
       // A. Initialize New PSD Structure
@@ -84,58 +160,137 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
         canvasState: undefined // Clear source canvas state if any
       };
 
-      // B. Helper to recursively clone and transform layers
+      // B. Synthesis Phase: Pre-generate all AI assets
+      const generatedAssets = new Map<string, HTMLCanvasElement>();
+      const generationTasks: Promise<void>[] = [];
+
+      setExportStatus('Synthesizing AI Layers...');
+
+      for (const container of containers) {
+          const payload = slotConnections.get(container.name);
+          if (payload && payload.requiresGeneration) {
+              const findGenerativeLayers = (layers: TransformedLayer[]) => {
+                  for (const layer of layers) {
+                      if (layer.type === 'generative' && layer.generativePrompt) {
+                          // Create task
+                          const task = async () => {
+                              const canvas = await generateLayerImage(
+                                  layer.generativePrompt!, 
+                                  layer.coords.w, 
+                                  layer.coords.h
+                              );
+                              if (canvas) {
+                                  generatedAssets.set(layer.id, canvas);
+                              }
+                          };
+                          generationTasks.push(task());
+                      }
+                      if (layer.children) findGenerativeLayers(layer.children);
+                  }
+              };
+              findGenerativeLayers(payload.layers);
+          }
+      }
+
+      if (generationTasks.length > 0) {
+          setExportStatus(`Generating ${generationTasks.length} assets...`);
+          await Promise.all(generationTasks);
+      }
+
+      // C. Assembly Phase: Reconstruct Hierarchy
+      setExportStatus('Assembling PSD structure...');
+
       const reconstructHierarchy = (
         transformedLayers: TransformedLayer[], 
-        sourcePsd: Psd
+        sourcePsd: Psd | undefined,
+        assets: Map<string, HTMLCanvasElement>
       ): Layer[] => {
         const resultLayers: Layer[] = [];
 
         for (const metaLayer of transformedLayers) {
-            // Find original heavy layer using the deterministic ID
-            const originalLayer = findLayerByPath(sourcePsd, metaLayer.id);
-            
-            if (originalLayer) {
-                const newLayer: Layer = {
-                    ...originalLayer, // PRESERVE PROPERTIES: opacity, blendMode, etc.
-                    top: metaLayer.coords.y,
-                    left: metaLayer.coords.x,
-                    bottom: metaLayer.coords.y + metaLayer.coords.h,
-                    right: metaLayer.coords.x + metaLayer.coords.w,
-                    hidden: !metaLayer.isVisible,
-                    opacity: metaLayer.opacity * 255, // Convert back to 0-255
-                    children: undefined // Explicitly cleared, repopulated below if group
-                };
+            let newLayer: Layer | undefined;
 
-                // RECURSIVE GROUP DETECTION
-                if (metaLayer.type === 'group' && metaLayer.children) {
-                    newLayer.children = reconstructHierarchy(metaLayer.children, sourcePsd);
-                    newLayer.opened = true; // Ensure groups are expanded in the output
+            // BRANCH 1: Generative Layer (Synthetic)
+            if (metaLayer.type === 'generative') {
+                const asset = assets.get(metaLayer.id);
+                if (asset) {
+                    newLayer = {
+                        name: metaLayer.name,
+                        top: metaLayer.coords.y,
+                        left: metaLayer.coords.x,
+                        bottom: metaLayer.coords.y + metaLayer.coords.h,
+                        right: metaLayer.coords.x + metaLayer.coords.w,
+                        hidden: !metaLayer.isVisible,
+                        opacity: metaLayer.opacity * 255,
+                        canvas: asset // Inject synthetic pixel data
+                    };
+                } else {
+                    // Fallback for failed generation: Placeholder
+                    newLayer = {
+                        name: `[FAILED GEN] ${metaLayer.name}`,
+                        top: metaLayer.coords.y,
+                        left: metaLayer.coords.x,
+                        bottom: metaLayer.coords.y + metaLayer.coords.h,
+                        right: metaLayer.coords.x + metaLayer.coords.w,
+                        hidden: false,
+                        opacity: 255,
+                        // Red placeholder
+                        canvas: (() => {
+                            const c = document.createElement('canvas');
+                            c.width = metaLayer.coords.w;
+                            c.height = metaLayer.coords.h;
+                            const ctx = c.getContext('2d');
+                            if(ctx) { ctx.fillStyle = '#ef4444'; ctx.fillRect(0,0,c.width,c.height); }
+                            return c;
+                        })()
+                    };
                 }
+            } 
+            // BRANCH 2: Standard Layer (Clone from Source)
+            else if (sourcePsd) {
+                const originalLayer = findLayerByPath(sourcePsd, metaLayer.id);
+                if (originalLayer) {
+                    newLayer = {
+                        ...originalLayer, // PRESERVE PROPERTIES
+                        top: metaLayer.coords.y,
+                        left: metaLayer.coords.x,
+                        bottom: metaLayer.coords.y + metaLayer.coords.h,
+                        right: metaLayer.coords.x + metaLayer.coords.w,
+                        hidden: !metaLayer.isVisible,
+                        opacity: metaLayer.opacity * 255,
+                        children: undefined
+                    };
+                    
+                    if (metaLayer.type === 'group' && metaLayer.children) {
+                        newLayer.children = reconstructHierarchy(metaLayer.children, sourcePsd, assets);
+                        newLayer.opened = true;
+                    }
+                }
+            }
 
+            if (newLayer) {
                 resultLayers.push(newLayer);
             }
         }
         return resultLayers;
       };
 
-      // C. Process each Payload and Construct Final Hierarchy
       const finalChildren: Layer[] = [];
 
-      // Iterate via template containers to maintain a deterministic order
       for (const container of containers) {
           const payload = slotConnections.get(container.name);
           
           if (payload) {
               const sourcePsd = psdRegistry[payload.sourceNodeId];
-              if (!sourcePsd) {
-                  throw new Error(`Binary PSD data missing for source node: ${payload.sourceNodeId}. Please reload the source file.`);
-              }
-
-              const reconstructedContent = reconstructHierarchy(payload.layers, sourcePsd);
+              // Note: sourcePsd might be missing if purely generative, but reconstructHierarchy handles undefined sourcePsd for gen layers.
+              // However, normal layers REQUIRE sourcePsd.
               
-              // WRAP IN CONTAINER GROUP
-              // Creates a top-level folder (e.g. !!BG) to match source/template structure
+              const reconstructedContent = reconstructHierarchy(
+                  payload.layers, 
+                  sourcePsd, 
+                  generatedAssets
+              );
+              
               const containerGroup: Layer = {
                   name: container.originalName,
                   children: reconstructedContent,
@@ -153,13 +308,17 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
       newPsd.children = finalChildren;
 
       // D. Write to File
+      setExportStatus('Finalizing binary...');
       await writePsdFile(newPsd, `PROCEDURAL_EXPORT_${Date.now()}.psd`);
+      setExportStatus('Done');
 
     } catch (e: any) {
         console.error("Export Failed:", e);
         setExportError(e.message || "Unknown export error");
     } finally {
         setIsExporting(false);
+        // Reset status after a short delay
+        setTimeout(() => setExportStatus('Idle'), 3000);
     }
   };
 
@@ -204,7 +363,9 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
           ) : (
               containers.map(container => {
                   const isFilled = slotConnections.has(container.name);
-                  
+                  const payload = slotConnections.get(container.name);
+                  const isGen = payload?.requiresGeneration;
+
                   return (
                       <div 
                         key={container.id} 
@@ -227,9 +388,16 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
                             title={`Input for ${container.name}`} 
                           />
                           
-                          <span className={`text-xs font-medium truncate flex-1 mr-2 ${isFilled ? 'text-indigo-200' : 'text-slate-400'}`}>
-                              {container.name}
-                          </span>
+                          <div className="flex flex-col flex-1 mr-2 overflow-hidden">
+                              <span className={`text-xs font-medium truncate ${isFilled ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                  {container.name}
+                              </span>
+                              {isGen && (
+                                  <span className="text-[8px] text-purple-400 font-mono leading-none mt-0.5">
+                                      ✨ AI GENERATION
+                                  </span>
+                              )}
+                          </div>
                           
                           {/* Visual Indicator */}
                           {isFilled ? (
@@ -284,7 +452,7 @@ export const ExportPSDNode = memo(({ id }: NodeProps) => {
              {isExporting ? (
                  <span className="flex items-center justify-center space-x-2">
                      <svg className="animate-spin h-3 w-3 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                     <span>Processing...</span>
+                     <span className="truncate">{exportStatus}</span>
                  </span>
              ) : (
                  "Export File"

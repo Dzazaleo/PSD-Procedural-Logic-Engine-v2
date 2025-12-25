@@ -244,6 +244,35 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
             };
 
             const transformedLayers = transformLayers(sourceData.layers as SerializableLayer[]);
+
+            // --- GENERATIVE INJECTION LOGIC ---
+            // If the Analyst suggests a generative expansion/fill, we inject a synthetic layer
+            // that acts as a placeholder or instruction for the Export node.
+            if (sourceData.aiStrategy?.generativePrompt) {
+                const genLayer: TransformedLayer = {
+                    id: `gen-layer-${sourceData.name || 'unknown'}`,
+                    name: `✨ AI Gen: ${sourceData.aiStrategy.generativePrompt.substring(0, 20)}...`,
+                    type: 'generative',
+                    isVisible: true,
+                    opacity: 1,
+                    coords: {
+                        x: targetRect.x,
+                        y: targetRect.y,
+                        w: targetRect.w,
+                        h: targetRect.h
+                    },
+                    transform: {
+                        scaleX: 1,
+                        scaleY: 1,
+                        offsetX: targetRect.x,
+                        offsetY: targetRect.y
+                    },
+                    generativePrompt: sourceData.aiStrategy.generativePrompt
+                };
+                
+                // Prepend to ensure it acts as a background/fill base
+                transformedLayers.unshift(genLayer);
+            }
             
             payload = {
               status: 'success',
@@ -255,7 +284,8 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
               metrics: {
                 source: { w: sourceRect.w, h: sourceRect.h },
                 target: { w: targetRect.w, h: targetRect.h }
-              }
+              },
+              requiresGeneration: !!sourceData.aiStrategy?.generativePrompt
             };
         }
 
@@ -392,6 +422,9 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                                    <span className="text-[10px] text-emerald-400 font-bold tracking-wide">READY</span>
                                    {instance.strategyUsed && (
                                        <span className="text-[8px] bg-pink-500/20 text-pink-300 px-1 rounded border border-pink-500/40">AI ENHANCED</span>
+                                   )}
+                                   {instance.payload.requiresGeneration && (
+                                       <span className="text-[8px] bg-purple-500/20 text-purple-300 px-1 rounded border border-purple-500/40">GEN</span>
                                    )}
                                </div>
                                <span className="text-[10px] text-slate-400 font-mono">{instance.payload.scaleFactor.toFixed(2)}x Scale</span>

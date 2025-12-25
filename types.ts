@@ -46,7 +46,7 @@ export interface ContainerContext {
 export interface SerializableLayer {
   id: string;
   name: string;
-  type: 'layer' | 'group';
+  type: 'layer' | 'group' | 'generative';
   children?: SerializableLayer[];
   isVisible: boolean;
   opacity: number;
@@ -87,6 +87,7 @@ export interface TransformedLayer extends SerializableLayer {
     offsetY: number;
   };
   children?: TransformedLayer[];
+  generativePrompt?: string;
 }
 
 export interface MappingContext {
@@ -133,6 +134,7 @@ export interface TransformedPayload {
     source: { w: number, h: number };
     target: { w: number, h: number };
   };
+  requiresGeneration?: boolean;
 }
 
 export interface RemapperConfig {
