@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useEffect, useCallback } from 'react';
+import React, { memo, useMemo, useEffect, useCallback, useState } from 'react';
 import { Handle, Position, NodeProps, useEdges, useReactFlow, useNodes } from 'reactflow';
 import { PSDNodeData, SerializableLayer, TransformedPayload, TransformedLayer, MAX_BOUNDARY_VIOLATION_PERCENT, LayoutStrategy } from '../types';
 import { useProceduralStore } from '../store/ProceduralContext';
@@ -26,6 +26,7 @@ interface InstanceData {
 export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
   // Read instance count from persistent data, default to 1 if new/undefined
   const instanceCount = data.instanceCount || 1;
+  const [confirmations, setConfirmations] = useState<Record<number, boolean>>({});
   
   const { setNodes } = useReactFlow();
   const edges = useEdges();
@@ -38,6 +39,11 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
   useEffect(() => {
     return () => unregisterNode(id);
   }, [id, unregisterNode]);
+
+  // Handle Confirmation Toggle
+  const handleConfirmGeneration = (index: number) => {
+      setConfirmations(prev => ({ ...prev, [index]: true }));
+  };
 
   // Compute Data for ALL Instances
   const instances: InstanceData[] = useMemo(() => {
@@ -245,13 +251,41 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
 
             const transformedLayers = transformLayers(sourceData.layers as SerializableLayer[]);
 
-            // --- GENERATIVE INJECTION LOGIC ---
-            // If the Analyst suggests a generative expansion/fill, we inject a synthetic layer
-            // that acts as a placeholder or instruction for the Export node.
+            // --- GENERATIVE INJECTION LOGIC GATE ---
+            let requiresGeneration = false;
+            let status: TransformedPayload['status'] = 'success';
+            let generativePromptUsed = null;
+
             if (sourceData.aiStrategy?.generativePrompt) {
+                const scaleThreshold = 2.0; // 200% stretch safety limit
+                const isExplicit = sourceData.aiStrategy.isExplicitIntent;
+                const isHighStretch = scale > scaleThreshold;
+                const isConfirmed = confirmations[i];
+
+                if (isExplicit) {
+                    // Explicit User Intent ("generate", "recreate") -> Always Trust
+                    requiresGeneration = true;
+                    generativePromptUsed = sourceData.aiStrategy.generativePrompt;
+                } else if (isHighStretch) {
+                    // Implicit Fallback High Stretch -> Require Confirmation
+                    if (isConfirmed) {
+                        requiresGeneration = true;
+                        generativePromptUsed = sourceData.aiStrategy.generativePrompt;
+                    } else {
+                        status = 'awaiting_confirmation';
+                        // Keep requiresGeneration false so ExportNode ignores it until confirmed
+                    }
+                }
+                // Default: If low stretch and no explicit command, we ignore generativePrompt
+                // and stick to standard geometric transformation (Safe Mode).
+            }
+
+            // Only inject the layer if the GATE opened (requiresGeneration is true)
+            // or if we are waiting for confirmation (to show preview if implemented later, but here just skip)
+            if (requiresGeneration && generativePromptUsed) {
                 const genLayer: TransformedLayer = {
                     id: `gen-layer-${sourceData.name || 'unknown'}`,
-                    name: `✨ AI Gen: ${sourceData.aiStrategy.generativePrompt.substring(0, 20)}...`,
+                    name: `✨ AI Gen: ${generativePromptUsed.substring(0, 20)}...`,
                     type: 'generative',
                     isVisible: true,
                     opacity: 1,
@@ -267,7 +301,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                         offsetX: targetRect.x,
                         offsetY: targetRect.y
                     },
-                    generativePrompt: sourceData.aiStrategy.generativePrompt
+                    generativePrompt: generativePromptUsed
                 };
                 
                 // Prepend to ensure it acts as a background/fill base
@@ -275,7 +309,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
             }
             
             payload = {
-              status: 'success',
+              status: status,
               sourceNodeId: sourceData.nodeId,
               sourceContainer: sourceData.name,
               targetContainer: targetData.name, // Will be originalName (e.g. "BG")
@@ -285,7 +319,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                 source: { w: sourceRect.w, h: sourceRect.h },
                 target: { w: targetRect.w, h: targetRect.h }
               },
-              requiresGeneration: !!sourceData.aiStrategy?.generativePrompt
+              requiresGeneration: requiresGeneration
             };
         }
 
@@ -299,7 +333,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
     }
 
     return result;
-  }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes]);
+  }, [instanceCount, edges, id, resolvedRegistry, templateRegistry, nodes, confirmations]);
 
 
   // Sync Payloads to Store
@@ -414,7 +448,7 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                 </div>
 
                 {/* Status Bar / Output */}
-                <div className="relative mt-2 pt-3 border-t border-slate-700/50 flex items-center justify-between">
+                <div className="relative mt-2 pt-3 border-t border-slate-700/50 flex flex-col space-y-2">
                    {instance.payload ? (
                        <div className="flex flex-col w-full pr-4">
                            <div className="flex justify-between items-center">
@@ -429,9 +463,26 @@ export const RemapperNode = memo(({ id, data }: NodeProps<PSDNodeData>) => {
                                </div>
                                <span className="text-[10px] text-slate-400 font-mono">{instance.payload.scaleFactor.toFixed(2)}x Scale</span>
                            </div>
+                           
                            <div className={`w-full h-1 rounded overflow-hidden mt-1 ${instance.strategyUsed ? 'bg-pink-900' : 'bg-slate-900'}`}>
                               <div className={`h-full ${instance.strategyUsed ? 'bg-pink-500' : 'bg-emerald-500'}`} style={{ width: '100%' }}></div>
                            </div>
+                           
+                           {/* Confirmation UI */}
+                           {instance.payload.status === 'awaiting_confirmation' && (
+                               <div className="mt-2 p-2 bg-yellow-900/30 border border-yellow-700/50 rounded flex flex-col space-y-2">
+                                   <span className="text-[9px] text-yellow-200 font-medium">
+                                       ⚠️ Extreme stretch ({instance.payload.scaleFactor.toFixed(1)}x) detected.
+                                       Generative fill available but requires confirmation.
+                                   </span>
+                                   <button 
+                                      onClick={() => handleConfirmGeneration(instance.index)}
+                                      className="py-1 px-2 bg-yellow-600 hover:bg-yellow-500 text-white text-[9px] font-bold rounded uppercase tracking-wider transition-colors shadow-sm"
+                                   >
+                                      Confirm AI Generation
+                                   </button>
+                               </div>
+                           )}
                        </div>
                    ) : (
                        <div className="flex items-center space-x-2 opacity-50">

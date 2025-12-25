@@ -68,6 +68,7 @@ export interface LayerOverride {
 }
 
 export interface LayoutStrategy {
+  method?: 'GEOMETRIC' | 'GENERATIVE' | 'HYBRID';
   suggestedScale: number;
   anchor: 'TOP' | 'CENTER' | 'BOTTOM' | 'STRETCH';
   generativePrompt: string;
@@ -77,6 +78,8 @@ export interface LayoutStrategy {
     allowedBleed: boolean;
     violationCount: number;
   };
+  // Logic Gate Flags
+  isExplicitIntent?: boolean;
 }
 
 export interface TransformedLayer extends SerializableLayer {
@@ -124,7 +127,7 @@ export interface TargetAssembly {
 }
 
 export interface TransformedPayload {
-  status: 'success' | 'error' | 'idle';
+  status: 'success' | 'error' | 'idle' | 'awaiting_confirmation';
   sourceNodeId: string;
   sourceContainer: string;
   targetContainer: string;

@@ -41,6 +41,12 @@ const MODELS: Record<ModelKey, ModelConfig> = {
 // --- Subcomponent: Strategy Card Renderer ---
 const StrategyCard: React.FC<{ strategy: LayoutStrategy, modelConfig: ModelConfig }> = ({ strategy, modelConfig }) => {
     const overrideCount = strategy.overrides?.length || 0;
+
+    // Determine method color badge
+    let methodColor = 'text-slate-400 border-slate-600';
+    if (strategy.method === 'GENERATIVE') methodColor = 'text-purple-300 border-purple-500 bg-purple-900/20';
+    else if (strategy.method === 'HYBRID') methodColor = 'text-pink-300 border-pink-500 bg-pink-900/20';
+    else if (strategy.method === 'GEOMETRIC') methodColor = 'text-emerald-300 border-emerald-500 bg-emerald-900/20';
     
     return (
         <div 
@@ -50,6 +56,12 @@ const StrategyCard: React.FC<{ strategy: LayoutStrategy, modelConfig: ModelConfi
              <div className="flex justify-between border-b border-slate-700 pb-2">
                 <span className={`font-bold ${modelConfig.badgeClass.includes('yellow') ? 'text-yellow-400' : 'text-blue-300'}`}>SEMANTIC RECOMPOSITION</span>
                 <span className="text-slate-400">{strategy.anchor}</span>
+             </div>
+
+             <div className="flex items-center space-x-2 mt-1">
+                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-mono font-bold tracking-wider ${methodColor}`}>
+                    {strategy.method || 'GEOMETRIC'}
+                </span>
              </div>
              
              <div className="grid grid-cols-2 gap-4 mt-1">
@@ -452,11 +464,23 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
         // 1. Source Relay with Metadata Injection (ResolvedRegistry)
         // Pass-through layer data to source-out handle but inject the AI Strategy into the context
         if (sourceData) {
+            
+            // Logic: Scan chat history for explicit user intent for generation
+            // This is a logic gate to prevent accidental generation in downstream Remapper
+            const history = instanceState?.chatHistory || [];
+            const hasExplicitKeywords = history.some(msg => 
+                msg.role === 'user' && 
+                /\b(generate|recreate|nano banana)\b/i.test(msg.parts[0].text)
+            );
+
             // Clone the context to avoid mutating the original reference from upstream
             const augmentedContext: MappingContext = {
                 ...sourceData,
                 // Inject the strategy if it exists for this instance
-                aiStrategy: instanceState?.layoutStrategy || undefined
+                aiStrategy: instanceState?.layoutStrategy ? {
+                    ...instanceState.layoutStrategy,
+                    isExplicitIntent: hasExplicitKeywords
+                } : undefined
             };
             
             registerResolved(id, `source-out-${i}`, augmentedContext);
@@ -597,6 +621,17 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
         3. If Target is wider, distribute horizontally.
         4. Calculate integer 'yOffset' and 'xOffset' relative to Target Top-Left (0,0).
         5. Maintain visual hierarchy: Key elements (Titles) must be prominent.
+
+        DECISION MATRIX (Strict Enforcement):
+        - METHOD 'GEOMETRIC': Default. Use purely geometric transforms (scale/translate). 'generativePrompt' MUST be empty string "".
+        - METHOD 'GENERATIVE': Use ONLY if user explicitly requests (e.g., "generate", "create", "nano banana") OR if aspect ratio mismatch is > 2.0 (mathematically impossible to fit without distortion).
+        - METHOD 'HYBRID': Use geometric layout for main elements but generate background fill.
+        
+        FALLBACK PROTOCOL:
+        If standard scaling fails (leaves gaps > 10% or cuts content) AND you provide a 'generativePrompt':
+        1. Set 'method' to 'HYBRID' or 'GENERATIVE'.
+        2. Prefix 'reasoning' with "[FALLBACK_REQUIRED]".
+        3. Provide the specific 'generativePrompt' to fill the missing areas.
     `;
     
     if (isRefining) {
@@ -632,6 +667,7 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
+                    method: { type: Type.STRING, enum: ['GEOMETRIC', 'GENERATIVE', 'HYBRID'] },
                     suggestedScale: { type: Type.NUMBER },
                     anchor: { type: Type.STRING, enum: ['TOP', 'CENTER', 'BOTTOM', 'STRETCH'] },
                     generativePrompt: { type: Type.STRING },
@@ -658,7 +694,7 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
                         required: ['allowedBleed', 'violationCount']
                     }
                 },
-                required: ['suggestedScale', 'anchor', 'generativePrompt', 'reasoning', 'overrides', 'safetyReport']
+                required: ['method', 'suggestedScale', 'anchor', 'generativePrompt', 'reasoning', 'overrides', 'safetyReport']
             }
         };
         
