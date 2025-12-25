@@ -43,32 +43,32 @@ const StrategyCard: React.FC<{ strategy: LayoutStrategy, modelConfig: ModelConfi
     const overrideCount = strategy.overrides?.length || 0;
     
     return (
-        <div className={`bg-slate-800/80 border-l-2 p-2 rounded text-[10px] space-y-2 w-full ${modelConfig.badgeClass.replace('bg-', 'border-').split(' ')[2]}`}>
-             <div className="flex justify-between border-b border-slate-700 pb-1">
+        <div className={`bg-slate-800/80 border-l-2 p-3 rounded text-xs space-y-3 w-full ${modelConfig.badgeClass.replace('bg-', 'border-').split(' ')[2]}`}>
+             <div className="flex justify-between border-b border-slate-700 pb-2">
                 <span className={`font-bold ${modelConfig.badgeClass.includes('yellow') ? 'text-yellow-400' : 'text-blue-300'}`}>SEMANTIC RECOMPOSITION</span>
                 <span className="text-slate-400">{strategy.anchor}</span>
              </div>
              
-             <div className="grid grid-cols-2 gap-2 mt-1">
+             <div className="grid grid-cols-2 gap-4 mt-1">
                 <div>
-                    <span className="block text-slate-500">Global Scale</span>
-                    <span className="text-slate-200 font-mono">{strategy.suggestedScale.toFixed(3)}x</span>
+                    <span className="block text-slate-500 text-[10px] uppercase tracking-wider">Global Scale</span>
+                    <span className="text-slate-200 font-mono text-sm">{strategy.suggestedScale.toFixed(3)}x</span>
                 </div>
                 <div>
-                    <span className="block text-slate-500">Overrides</span>
-                    <span className={`${overrideCount > 0 ? 'text-pink-400 font-bold' : 'text-slate-400'}`}>
+                    <span className="block text-slate-500 text-[10px] uppercase tracking-wider">Overrides</span>
+                    <span className={`text-sm ${overrideCount > 0 ? 'text-pink-400 font-bold' : 'text-slate-400'}`}>
                         {overrideCount} Layers
                     </span>
                 </div>
              </div>
 
-             <div className="italic text-slate-400 leading-relaxed border-l-2 border-slate-600 pl-2 my-1 whitespace-pre-wrap break-words">
+             <div className="italic text-slate-300 leading-relaxed border-l-2 border-slate-600 pl-3 my-1 whitespace-pre-wrap break-words">
                 "{strategy.reasoning}"
              </div>
 
              {strategy.safetyReport && strategy.safetyReport.violationCount > 0 && (
-                 <div className="bg-orange-900/30 text-orange-200 p-1 rounded flex items-center space-x-1">
-                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                 <div className="bg-orange-900/30 text-orange-200 p-2 rounded flex items-center space-x-2">
+                     <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                      <span>{strategy.safetyReport.violationCount} Boundary Warnings</span>
                  </div>
              )}
@@ -141,12 +141,12 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
      };
 
     return (
-        <div className={`relative border-b border-slate-700/50 bg-slate-800/30 first:border-t-0 ${compactMode ? 'py-1' : ''}`}>
+        <div className={`relative border-b border-slate-700/50 bg-slate-800/30 first:border-t-0 ${compactMode ? 'py-2' : ''}`}>
             {/* Instance Header */}
-            <div className={`px-2 py-1.5 flex items-center justify-between ${theme.bg.replace('/20', '/10')}`}>
+            <div className={`px-3 py-2 flex items-center justify-between ${theme.bg.replace('/20', '/10')}`}>
                 <div className="flex items-center space-x-2">
                     <div className={`w-2 h-2 rounded-full ${theme.dot}`}></div>
-                    <span className={`text-[10px] font-bold tracking-wide uppercase ${theme.text}`}>
+                    <span className={`text-[11px] font-bold tracking-wide uppercase ${theme.text}`}>
                         {targetData?.name || `Instance ${index + 1}`}
                     </span>
                 </div>
@@ -158,7 +158,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                         onChange={(e) => onModelChange(index, e.target.value as ModelKey)}
                         onClick={(e) => e.stopPropagation()}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className={`nodrag nopan appearance-none text-[8px] px-1.5 py-0.5 pr-3 rounded font-mono font-bold cursor-pointer outline-none border transition-colors duration-300 ${activeModelConfig.badgeClass}`}
+                        className={`nodrag nopan appearance-none text-[9px] px-2 py-1 pr-4 rounded font-mono font-bold cursor-pointer outline-none border transition-colors duration-300 ${activeModelConfig.badgeClass}`}
                      >
                          <option value="gemini-3-flash" className="text-black bg-white">FLASH</option>
                          <option value="gemini-3-pro" className="text-black bg-white">PRO</option>
@@ -168,7 +168,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
             </div>
 
             {/* Main Content Area */}
-            <div className={`p-2 space-y-2 ${compactMode ? 'text-[9px]' : ''}`}>
+            <div className={`p-3 space-y-3 ${compactMode ? 'text-[10px]' : ''}`}>
                 
                 {/* Visual Wiring & Preview Row */}
                 <div className="flex items-center justify-between bg-slate-900/40 rounded p-2 border border-slate-700/30 relative min-h-[60px] overflow-visible">
@@ -181,7 +181,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                                 type="target" 
                                 position={Position.Left} 
                                 id={`source-in-${index}`} 
-                                className="!absolute !-left-6 !w-3 !h-3 !rounded-full !bg-indigo-500 !border-2 !border-slate-800 z-50 transition-transform hover:scale-125"
+                                className="!absolute !-left-7 !w-3 !h-3 !rounded-full !bg-indigo-500 !border-2 !border-slate-800 z-50 transition-transform hover:scale-125"
                                 style={{ top: '50%', transform: 'translate(-50%, -50%)' }}
                                 title="Input: Source Context"
                             />
@@ -196,7 +196,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                                 type="target" 
                                 position={Position.Left} 
                                 id={`target-in-${index}`} 
-                                className="!absolute !-left-6 !w-3 !h-3 !rounded-full !bg-emerald-500 !border-2 !border-slate-800 z-50 transition-transform hover:scale-125"
+                                className="!absolute !-left-7 !w-3 !h-3 !rounded-full !bg-emerald-500 !border-2 !border-slate-800 z-50 transition-transform hover:scale-125"
                                 style={{ top: '50%', transform: 'translate(-50%, -50%)' }}
                                 title="Input: Target Definition"
                             />
@@ -214,7 +214,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                                     style={sourceData ? getPreviewStyle(sourceData.container.bounds.w, sourceData.container.bounds.h, '#6366f1') : { width: 24, height: 24, borderColor: '#334155' }}>
                             </div>
                             {sourceData && (
-                                <span className="text-[7px] font-mono text-slate-500 leading-none">
+                                <span className="text-[8px] font-mono text-slate-500 leading-none">
                                     {Math.round(sourceData.container.bounds.w)}x{Math.round(sourceData.container.bounds.h)}
                                 </span>
                             )}
@@ -233,7 +233,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                                     style={targetData ? getPreviewStyle(targetData.bounds.w, targetData.bounds.h, '#10b981') : { width: 24, height: 24, borderColor: '#334155' }}>
                             </div>
                              {targetData && (
-                                <span className="text-[7px] font-mono text-slate-500 leading-none">
+                                <span className="text-[8px] font-mono text-slate-500 leading-none">
                                     {Math.round(targetData.bounds.w)}x{Math.round(targetData.bounds.h)}
                                 </span>
                             )}
@@ -249,7 +249,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                                 type="source" 
                                 position={Position.Right} 
                                 id={`source-out-${index}`} 
-                                className="!absolute !-right-6 !w-3 !h-3 !rounded-full !bg-indigo-500 !border-2 !border-white z-50 transition-transform hover:scale-125" 
+                                className="!absolute !-right-7 !w-3 !h-3 !rounded-full !bg-indigo-500 !border-2 !border-white z-50 transition-transform hover:scale-125" 
                                 style={{ top: '50%', transform: 'translate(50%, -50%)' }}
                                 title="Relay: Source Data + AI Strategy"
                             />
@@ -262,7 +262,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                                 type="source" 
                                 position={Position.Right} 
                                 id={`target-out-${index}`} 
-                                className="!absolute !-right-6 !w-3 !h-3 !rounded-full !bg-emerald-500 !border-2 !border-white z-50 transition-transform hover:scale-125" 
+                                className="!absolute !-right-7 !w-3 !h-3 !rounded-full !bg-emerald-500 !border-2 !border-white z-50 transition-transform hover:scale-125" 
                                 style={{ top: '50%', transform: 'translate(50%, -50%)' }}
                                 title="Relay: Target Definition"
                             />
@@ -270,21 +270,21 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                     </div>
                 </div>
 
-                {/* Chat Console */}
+                {/* Chat Console - EXPANDED */}
                 <div 
                     ref={chatContainerRef}
-                    className={`nodrag nopan ${compactMode ? 'h-24' : 'h-32'} overflow-y-auto border border-slate-700 bg-slate-900 rounded p-2 space-y-2 custom-scrollbar transition-all`}
+                    className={`nodrag nopan ${compactMode ? 'h-48' : 'h-64'} overflow-y-auto border border-slate-700 bg-slate-900 rounded p-3 space-y-3 custom-scrollbar transition-all shadow-inner`}
                     onWheel={(e) => e.stopPropagation()} 
                     onMouseDown={(e) => e.stopPropagation()}
                 >
                     {state.chatHistory.length === 0 && (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-600 italic text-[10px] opacity-50">
+                        <div className="h-full flex flex-col items-center justify-center text-slate-600 italic text-xs opacity-50">
                             <span>Ready to analyze {targetData?.name || 'slot'}</span>
                         </div>
                     )}
                     {state.chatHistory.map((msg, idx) => (
                         <div key={msg.id || idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`max-w-[95%] rounded border p-1.5 text-[10px] leading-relaxed
+                            <div className={`max-w-[95%] rounded border p-2 text-xs leading-relaxed shadow-sm
                                 ${msg.role === 'user' 
                                      ? 'bg-slate-800 border-slate-600 text-slate-200' 
                                      : `bg-slate-800/50 ${activeModelConfig.badgeClass.replace('bg-', 'border-').split(' ')[0]} text-slate-300`
@@ -302,15 +302,15 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                         </div>
                     ))}
                     {isAnalyzing && (
-                        <div className="flex items-center space-x-2 text-[10px] text-slate-400 animate-pulse">
+                        <div className="flex items-center space-x-2 text-xs text-slate-400 animate-pulse pl-1">
                             <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
                             <span>Analyst is thinking...</span>
                         </div>
                     )}
                 </div>
 
-                {/* Control Footer */}
-                <div className="flex space-x-1">
+                {/* Control Footer - REORGANIZED for Wider Layout */}
+                <div className="flex items-center space-x-2 pt-2 border-t border-slate-700/30">
                      <textarea
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
@@ -318,14 +318,14 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                         onMouseDown={(e) => e.stopPropagation()}
                         placeholder="Refinement instructions..."
                         disabled={!isReady || isAnalyzing}
-                        className="nodrag nopan flex-1 bg-slate-900 border border-slate-700 rounded p-1.5 text-[10px] text-slate-200 focus:outline-none focus:border-indigo-500 resize-none h-8"
+                        className="nodrag nopan flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 resize-none h-10 transition-colors"
                      />
-                     <div className="flex flex-col space-y-0.5 w-16">
+                     <div className="flex space-x-2">
                         <button
                             onClick={(e) => { e.stopPropagation(); onAnalyze(index); }}
                             onMouseDown={(e) => e.stopPropagation()}
                             disabled={!isReady || isAnalyzing}
-                            className={`nodrag nopan flex-1 rounded text-[8px] font-bold uppercase transition-all shadow-sm
+                            className={`nodrag nopan h-10 px-4 rounded text-[10px] font-bold uppercase transition-all shadow-sm flex items-center justify-center
                                 ${isReady && !isAnalyzing 
                                     ? 'bg-slate-700 hover:bg-slate-600 text-white border border-slate-600'
                                     : 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
@@ -337,7 +337,7 @@ const InstanceRow: React.FC<InstanceRowProps> = ({
                             onClick={handleRefineClick}
                             onMouseDown={(e) => e.stopPropagation()}
                             disabled={!isReady || isAnalyzing || inputText.trim().length === 0}
-                            className={`nodrag nopan flex-1 rounded text-[8px] font-bold uppercase transition-all shadow-sm
+                            className={`nodrag nopan h-10 px-4 rounded text-[10px] font-bold uppercase transition-all shadow-sm flex items-center justify-center
                                 ${inputText.trim().length > 0 && !isAnalyzing
                                     ? 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400'
                                     : 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
@@ -707,8 +707,8 @@ export const DesignAnalystNode = memo(({ id, data }: NodeProps<PSDNodeData>) => 
   return (
     <div className="w-full min-w-[320px] bg-slate-800 rounded-lg shadow-2xl border border-slate-600 font-sans flex flex-col transition-colors duration-300">
       <NodeResizer 
-          minWidth={450} 
-          minHeight={300} 
+          minWidth={550} 
+          minHeight={500} 
           isVisible={true} 
           handleStyle={{ background: 'transparent', border: 'none' }}
           lineStyle={{ border: 'none' }}
