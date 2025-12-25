@@ -36,24 +36,28 @@ const GenerativePreviewOverlay = ({
     scale: number;
 }) => {
     return (
-        <div className="relative w-full mt-2 rounded-md overflow-hidden bg-slate-900/50 border border-indigo-500/30 group">
-             {/* Aspect Ratio Container (Square for now as drafts are 256x256, but container might vary) */}
-             <div className="relative w-full h-32 flex items-center justify-center overflow-hidden">
+        <div className={`relative w-full mt-2 rounded-md overflow-hidden bg-slate-900/50 border transition-all duration-500 ${isGenerating ? 'border-indigo-500/30' : 'border-purple-500/50 animate-pulse'} group`}>
+             {/* Aspect Ratio Container - Expanded to 160px (h-40) for better visibility */}
+             <div className="relative w-full h-40 flex items-center justify-center overflow-hidden">
                  
                  {/* 1. The Ghost Image */}
                  {previewUrl ? (
                      <div className="absolute inset-0 z-10">
+                         {/* Stylized "Ghost" Rendering: Grayscale + Opacity + Screen Blend */}
                          <img 
                             src={previewUrl} 
                             alt="AI Ghost" 
-                            className="w-full h-full object-cover opacity-40 mix-blend-screen filter blur-[1px] transition-all duration-700 group-hover:blur-0 group-hover:opacity-60"
+                            className="w-full h-full object-cover opacity-50 grayscale-[0.3] mix-blend-screen filter blur-[0.5px] transition-all duration-700 group-hover:blur-0 group-hover:grayscale-0 group-hover:opacity-90"
                          />
-                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent"></div>
+                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 to-transparent"></div>
+                         
+                         {/* Tech Grid Overlay */}
+                         <div className="absolute inset-0 opacity-20 bg-[linear-gradient(rgba(139,92,246,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(139,92,246,0.1)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
                      </div>
                  ) : (
                      <div className="absolute inset-0 flex items-center justify-center z-0">
-                         <div className="text-[9px] text-indigo-400/50 font-mono text-center px-4">
-                             {isGenerating ? 'SYNTHESIZING DRAFT...' : 'AWAITING GENERATION'}
+                         <div className="text-[9px] text-purple-400/50 font-mono text-center px-4 animate-pulse">
+                             {isGenerating ? 'SYNTHESIZING GHOST...' : 'INITIALIZING PREVIEW...'}
                          </div>
                      </div>
                  )}
@@ -61,19 +65,19 @@ const GenerativePreviewOverlay = ({
                  {/* 2. Scanning Line Animation */}
                  {(isGenerating || previewUrl) && (
                      <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
-                         <div className="absolute top-0 left-0 w-full h-[2px] bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.8)] animate-scan-y"></div>
+                         <div className="absolute top-0 left-0 w-full h-[2px] bg-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.8)] animate-scan-y"></div>
                      </div>
                  )}
 
                  {/* 3. Status Badge */}
                  <div className="absolute bottom-2 left-2 z-30 flex items-center space-x-2">
-                     <span className="text-[8px] bg-indigo-900/80 text-indigo-200 px-1.5 py-0.5 rounded border border-indigo-500/50 backdrop-blur-sm">
-                         AI SANDBOX
+                     <span className="text-[8px] bg-purple-900/80 text-purple-200 px-1.5 py-0.5 rounded border border-purple-500/50 backdrop-blur-sm shadow-[0_0_8px_rgba(168,85,247,0.4)]">
+                         AI GHOST
                      </span>
                      {isGenerating && (
                          <span className="flex h-1.5 w-1.5 relative">
-                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
+                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-500"></span>
                          </span>
                      )}
                  </div>
